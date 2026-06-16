@@ -171,7 +171,7 @@ Vision message example:
 {
   "model": "vision-model-key",
   "input": [
-    { "type": "message", "content": "What is in this image?" },
+    { "type": "text", "content": "What is in this image?" },
     { "type": "image", "data_url": "data:image/png;base64,..." }
   ],
   "stream": false,

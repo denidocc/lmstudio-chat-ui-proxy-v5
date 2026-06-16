@@ -15,6 +15,11 @@ This project handles images in two separate ways:
 
 Do not mix them up.
 
+For step-by-step behavior when you click buttons in the UI, see:
+
+- **Connect / chat / vision / Load model** — [lm-studio.md — How it actually works](./lm-studio.md#how-it-actually-works--ui-flow)
+- **Load FLUX workflow / Test ComfyUI / Generate** — [comfyui.md — How it actually works](./comfyui.md#how-it-actually-works)
+
 ---
 
 ## Vision input (LM Studio)
@@ -34,9 +39,7 @@ Steps:
 
 The image is sent as a `data_url` in the chat request. See [api.md](./api.md) for the request shape.
 
-**Vision does not generate images.**
-
----
+**Vision does not generate images.** Image creation uses ComfyUI only — the **Load FLUX workflow** button fills the form from a hardcoded template in `public/app.js`; it does not download models or talk to ComfyUI. Details: [comfyui.md — Built-in FLUX workflow source](./comfyui.md#built-in-flux-workflow-source).
 
 ## Image generation (ComfyUI)
 
@@ -65,7 +68,7 @@ Use the ComfyUI panel instead.
 1. Start ComfyUI at `http://127.0.0.1:8188`
 2. Install `ComfyUI-GGUF`
 3. Place the FLUX `.gguf` file in `ComfyUI/models/unet`
-4. In the UI, click **Load FLUX workflow** or paste your own API-format workflow
+4. In the UI, click **Load FLUX workflow** (copies built-in JSON from `public/app.js` into the form) or paste your own API-format workflow
 5. Confirm parameter paths (built-in FLUX Klein workflow):
 
 ```text

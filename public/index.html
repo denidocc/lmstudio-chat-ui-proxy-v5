@@ -4,6 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>LM Studio LAN Chat</title>
+  <script>
+    (function () {
+      if (localStorage.getItem("lm_ui_theme") === "light") {
+        document.documentElement.setAttribute("data-theme", "light");
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -12,86 +19,103 @@
       <section class="panel">
         <div class="brand">
           <div class="logo">LM</div>
-          <div>
+          <div class="brandText">
             <h1>LAN Chat</h1>
-            <p>UI + proxy + Markdown + файлы</p>
+            <p data-i18n="brandSubtitle">UI + proxy + Markdown + files</p>
+          </div>
+        </div>
+
+        <div class="uiToolbar" aria-label="UI preferences">
+          <div class="uiToolbarGroup">
+            <span class="uiToolbarLabel" data-i18n="langLabel">Language</span>
+            <div class="segmented" role="group" aria-label="Language">
+              <button type="button" class="segmentBtn" data-lang-btn="ru" data-i18n="langRu">RU</button>
+              <button type="button" class="segmentBtn" data-lang-btn="en" data-i18n="langEn">EN</button>
+            </div>
+          </div>
+          <div class="uiToolbarGroup">
+            <span class="uiToolbarLabel" data-i18n="themeLabel">Theme</span>
+            <div class="segmented" role="group" aria-label="Theme">
+              <button type="button" class="segmentBtn" data-theme-btn="dark" data-i18n="themeDark">Dark</button>
+              <button type="button" class="segmentBtn" data-theme-btn="light" data-i18n="themeLight">Light</button>
+            </div>
           </div>
         </div>
 
         <label class="field">
-          <span>Адрес LM Studio</span>
+          <span data-i18n="lmStudioUrl">LM Studio address</span>
           <input id="serverUrl" type="url" placeholder="http://192.168.10.175:1234" />
         </label>
 
         <label class="field">
-          <span>API Token <small>(если включена авторизация)</small></span>
-          <input id="apiToken" type="password" placeholder="Оставить пустым, если токен не нужен" />
+          <span><span data-i18n="apiToken">API Token</span> <small data-i18n="apiTokenHint">(if authentication is enabled)</small></span>
+          <input id="apiToken" type="password" data-i18n-placeholder="apiTokenPlaceholder" placeholder="Leave empty if no token is required" />
         </label>
 
         <div class="row">
-          <button id="connectBtn" class="btn primary">Подключиться</button>
-          <button id="refreshBtn" class="btn">Обновить</button>
+          <button id="connectBtn" class="btn primary" type="button" data-i18n="connect">Connect</button>
+          <button id="refreshBtn" class="btn" type="button" data-i18n="refresh">Refresh</button>
         </div>
 
         <div class="status">
           <span id="statusDot" class="dot"></span>
-          <span id="statusText">Не подключено</span>
+          <span id="statusText" data-i18n="statusDisconnected">Not connected</span>
         </div>
       </section>
 
       <section class="panel historyPanel">
         <div class="panelTitleRow">
-          <h2>История</h2>
-          <button id="newChatBtn" class="btn small">Новый чат</button>
+          <h2 data-i18n="history">History</h2>
+          <button id="newChatBtn" class="btn small" type="button" data-i18n="newChat">New chat</button>
         </div>
         <div id="chatHistory" class="historyList"></div>
       </section>
 
       <details class="panel collapsible">
         <summary>
-          <span>Модель</span>
-          <small>скрыть / раскрыть</small>
+          <span data-i18n="panelModel">Model</span>
+          <small data-i18n="panelToggle">collapse / expand</small>
         </summary>
 
         <div class="detailsBody">
           <label class="field">
-            <span>Выбранная модель</span>
+            <span data-i18n="selectedModel">Selected model</span>
             <select id="modelSelect" disabled>
-              <option>Сначала подключитесь</option>
+              <option data-i18n="connectFirst">Connect first</option>
             </select>
           </label>
 
           <div class="row">
-            <button id="loadBtn" class="btn" disabled>Загрузить модель</button>
-            <button id="forgetChatBtn" class="btn danger" disabled>Удалить чат</button>
+            <button id="loadBtn" class="btn" type="button" disabled data-i18n="loadModel">Load model</button>
+            <button id="forgetChatBtn" class="btn danger" type="button" disabled data-i18n="deleteChat">Delete chat</button>
           </div>
 
           <div id="modelInfo" class="info">
-            <p class="muted">Информация появится после подключения.</p>
+            <p class="muted" data-i18n="modelInfoPlaceholder">Model info will appear after connecting.</p>
           </div>
         </div>
       </details>
 
       <details class="panel collapsible">
         <summary>
-          <span>Параметры</span>
-          <small>system prompt / tokens</small>
+          <span data-i18n="panelParams">Parameters</span>
+          <small data-i18n="panelParamsHint">system prompt / tokens</small>
         </summary>
 
         <div class="detailsBody">
           <label class="field">
-            <span>System prompt</span>
-            <textarea id="systemPrompt" rows="4" placeholder="Например: Отвечай кратко и по делу."></textarea>
+            <span data-i18n="systemPrompt">System prompt</span>
+            <textarea id="systemPrompt" rows="4" data-i18n-placeholder="systemPromptPlaceholder" placeholder="Example: Reply briefly and clearly."></textarea>
           </label>
 
           <div class="grid2">
             <label class="field">
-              <span>Temperature</span>
+              <span data-i18n="temperature">Temperature</span>
               <input id="temperature" type="number" min="0" max="1" step="0.1" value="0.7" />
             </label>
 
             <label class="field">
-              <span>Max tokens</span>
+              <span data-i18n="maxTokens">Max tokens</span>
               <input id="maxTokens" type="number" min="64" max="8192" step="64" value="1024" />
             </label>
           </div>
@@ -100,147 +124,108 @@
 
       <details class="panel collapsible">
         <summary>
-          <span>Vision / изображение</span>
-          <small>прикрепить картинку к вопросу</small>
+          <span data-i18n="panelExport">Files / export</span>
+          <small data-i18n="panelExportHint">download chat</small>
         </summary>
 
         <div class="detailsBody">
-          <p class="hint">
-            Работает только если выбранная модель имеет <b>Vision: Да</b>. Это анализ изображения, не генерация.
-          </p>
-
-          <label class="field">
-            <span>Изображение для следующего сообщения</span>
-            <input id="visionImageInput" type="file" accept="image/png,image/jpeg,image/webp" />
-          </label>
-
-          <div id="visionPreview" class="visionPreview hidden"></div>
-
-          <div class="row">
-            <button id="clearVisionBtn" class="btn" type="button" disabled>Убрать изображение</button>
-          </div>
-        </div>
-      </details>
-
-      <details class="panel collapsible">
-        <summary>
-          <span>Файлы / экспорт</span>
-          <small>скачать чат</small>
-        </summary>
-
-        <div class="detailsBody">
-          <p class="hint">Скачивание работает локально в браузере. Файлы сохраняются на вашем устройстве.</p>
+          <p class="hint" data-i18n="exportHint">Export runs locally in the browser. Files are saved on your device.</p>
 
           <div class="row wrap">
-            <button id="exportMdBtn" class="btn" type="button">Скачать .md</button>
-            <button id="exportJsonBtn" class="btn" type="button">Скачать .json</button>
-            <button id="exportHtmlBtn" class="btn" type="button">Скачать .html</button>
+            <button id="exportMdBtn" class="btn" type="button" data-i18n="exportMd">Download .md</button>
+            <button id="exportJsonBtn" class="btn" type="button" data-i18n="exportJson">Download .json</button>
+            <button id="exportHtmlBtn" class="btn" type="button" data-i18n="exportHtml">Download .html</button>
           </div>
         </div>
       </details>
 
       <details class="panel collapsible">
         <summary>
-          <span>ComfyUI / изображения</span>
-          <small>FLUX / workflow API</small>
+          <span data-i18n="panelComfy">ComfyUI settings</span>
+          <small data-i18n="panelComfyHint">FLUX / workflow API</small>
         </summary>
 
         <div class="detailsBody">
           <label class="field">
-            <span>ComfyUI URL</span>
+            <span data-i18n="comfyUrl">ComfyUI URL</span>
             <input id="comfyUrl" type="url" placeholder="http://127.0.0.1:8188" />
           </label>
 
           <div class="row wrap">
-            <button id="testComfyBtn" class="btn" type="button">Проверить ComfyUI</button>
-            <button id="saveComfyWorkflowBtn" class="btn" type="button">Сохранить workflow</button>
-            <button id="loadFluxWorkflowBtn" class="btn" type="button">Загрузить FLUX workflow</button>
+            <button id="testComfyBtn" class="btn" type="button" data-i18n="testComfy">Test ComfyUI</button>
+            <button id="saveComfyWorkflowBtn" class="btn" type="button" data-i18n="saveComfyWorkflow">Save workflow</button>
+            <button id="loadFluxWorkflowBtn" class="btn" type="button" data-i18n="loadFluxWorkflow">Load FLUX workflow</button>
           </div>
 
           <div id="comfyStatus" class="imageStatus muted"></div>
 
           <label class="field">
-            <span>Workflow API JSON</span>
-            <textarea id="comfyWorkflow" rows="8" placeholder="Вставьте workflow, экспортированный из ComfyUI в API format"></textarea>
+            <span data-i18n="workflowJson">Workflow API JSON</span>
+            <textarea id="comfyWorkflow" rows="8" data-i18n-placeholder="workflowPlaceholder" placeholder="Paste workflow exported from ComfyUI in API format"></textarea>
           </label>
 
           <div class="grid2">
             <label class="field">
-              <span>Prompt path</span>
+              <span data-i18n="promptPath">Prompt path</span>
               <input id="comfyPromptPath" type="text" placeholder="4.inputs.text" />
             </label>
 
             <label class="field">
-              <span>Negative path</span>
+              <span data-i18n="negativePath">Negative path</span>
               <input id="comfyNegativePath" type="text" placeholder="5.inputs.text" />
             </label>
           </div>
 
           <div class="grid2">
             <label class="field">
-              <span>Seed path</span>
+              <span data-i18n="seedPath">Seed path</span>
               <input id="comfySeedPath" type="text" placeholder="7.inputs.seed" />
             </label>
 
             <label class="field">
-              <span>Steps path</span>
+              <span data-i18n="stepsPath">Steps path</span>
               <input id="comfyStepsPath" type="text" placeholder="7.inputs.steps" />
             </label>
           </div>
 
           <div class="grid2">
             <label class="field">
-              <span>Width path</span>
+              <span data-i18n="widthPath">Width path</span>
               <input id="comfyWidthPath" type="text" placeholder="6.inputs.width" />
             </label>
 
             <label class="field">
-              <span>Height path</span>
+              <span data-i18n="heightPath">Height path</span>
               <input id="comfyHeightPath" type="text" placeholder="6.inputs.height" />
             </label>
           </div>
 
           <label class="field">
-            <span>Prompt</span>
-            <textarea id="comfyPrompt" rows="4" placeholder="A cinematic portrait, soft light, detailed"></textarea>
-          </label>
-
-          <div class="row wrap">
-            <button id="useLastAnswerAsPromptBtn" class="btn" type="button">Взять последний ответ</button>
-          </div>
-
-          <label class="field">
-            <span>Negative prompt</span>
+            <span data-i18n="negativePrompt">Negative prompt</span>
             <textarea id="comfyNegativePrompt" rows="3" placeholder="low quality, blurry, distorted"></textarea>
           </label>
 
           <div class="grid3">
             <label class="field">
-              <span>Width</span>
+              <span data-i18n="width">Width</span>
               <input id="comfyWidth" type="number" min="256" max="2048" step="64" value="1024" />
             </label>
 
             <label class="field">
-              <span>Height</span>
+              <span data-i18n="height">Height</span>
               <input id="comfyHeight" type="number" min="256" max="2048" step="64" value="1024" />
             </label>
 
             <label class="field">
-              <span>Steps</span>
+              <span data-i18n="steps">Steps</span>
               <input id="comfySteps" type="number" min="1" max="80" step="1" value="4" />
             </label>
           </div>
 
           <label class="field">
-            <span>Seed</span>
-            <input id="comfySeed" type="number" min="0" step="1" placeholder="пусто = случайный" />
+            <span data-i18n="seed">Seed</span>
+            <input id="comfySeed" type="number" min="0" step="1" data-i18n-placeholder="seedPlaceholder" placeholder="empty = random" />
           </label>
-
-          <div class="row">
-            <button id="generateComfyBtn" class="btn primary" type="button">Сгенерировать</button>
-          </div>
-
-          <div id="comfyImages" class="generatedImages"></div>
         </div>
       </details>
 
@@ -248,9 +233,13 @@
 
     <section class="chatShell">
       <header class="chatHeader">
-        <div>
-          <h2 id="chatTitle">Чат</h2>
-          <p id="chatSubtitle">Запусти start-файл, затем подключи LM Studio.</p>
+        <div class="chatHeaderMain">
+          <h2 id="chatTitle" data-i18n="chatTitle">Chat</h2>
+          <p id="chatSubtitle" data-i18n="chatSubtitleDefault">Run the start file, then connect LM Studio.</p>
+          <div class="composerModeSwitch segmented" role="group" aria-label="Composer mode">
+            <button type="button" class="segmentBtn active" id="modeChatBtn" data-mode-btn="chat" data-i18n="modeChat">Chat</button>
+            <button type="button" class="segmentBtn" id="modeImageBtn" data-mode-btn="image" data-i18n="modeImage">Image</button>
+          </div>
         </div>
         <div id="statsBox" class="statsBox"></div>
       </header>
@@ -258,12 +247,26 @@
       <div id="messages" class="messages"></div>
 
       <form id="chatForm" class="composer">
-        <textarea id="userInput" rows="2" placeholder="Напишите сообщение..." disabled></textarea>
-        <button id="sendBtn" class="btn primary" type="submit" disabled>Отправить</button>
+        <div id="visionPreview" class="visionPreview composerPreview hidden"></div>
+
+        <div class="composerRow">
+          <input id="visionImageInput" type="file" class="hidden" accept="image/png,image/jpeg,image/webp" />
+
+          <button id="attachImageBtn" class="btn iconBtn" type="button" disabled title="Attach image" data-i18n="attachImage">📎</button>
+
+          <textarea id="userInput" rows="2" data-i18n-placeholder="userInputPlaceholder" placeholder="Write a message..." disabled></textarea>
+
+          <button id="sendBtn" class="btn primary" type="submit" disabled data-i18n="send">Send</button>
+        </div>
+
+        <div id="composerImageActions" class="composerImageActions hidden">
+          <button id="useLastAnswerAsPromptBtn" class="btn small" type="button" data-i18n="useLastAnswer">Use last answer</button>
+        </div>
       </form>
     </section>
   </main>
 
+  <script src="./i18n.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
