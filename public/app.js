@@ -698,9 +698,18 @@ function renderModelInfo() {
 
 function renderHeader() {
   const chat = getActiveChat();
-  const model = getSelectedModel();
+  const mode = getComposerMode(chat);
 
   els.chatTitle.textContent = displayChatTitle(chat.title);
+
+  if (mode === "image") {
+    const comfyUrl = normalizeBaseUrl(els.comfyUrl.value || state.comfyUrl || "http://127.0.0.1:8188");
+    els.chatSubtitle.textContent = t("imageModeHeaderSubtitle", { comfyUrl });
+    els.statsBox.textContent = "";
+    return;
+  }
+
+  const model = getSelectedModel();
 
   if (model) {
     els.chatSubtitle.textContent = `${model.display_name || model.key} · ${state.baseUrl} · ${isLoaded(model) ? t("modelLoaded") : t("modelNotLoadedShort")}`;
