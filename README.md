@@ -6,6 +6,18 @@ One Node.js server serves the UI and proxies requests to LM Studio and ComfyUI. 
 
 ---
 
+## Screenshots
+
+### Chat mode (LM Studio)
+
+![Chat mode — text and vision](docs/screenshots/chat-mode.png)
+
+### Image mode (ComfyUI)
+
+![Image mode — image generation](docs/screenshots/image-mode.png)
+
+---
+
 ## Features
 
 - Chat with LM Studio via `/api/v1/chat`
