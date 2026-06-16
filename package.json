@@ -1,0 +1,9 @@
+{
+  "name": "lmstudio-chat-ui-proxy-v5",
+  "version": "5.0.0",
+  "private": true,
+  "description": "Minimal LM Studio LAN chat UI with proxy, Markdown, vision image input, export and optional image generation API",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
