@@ -21,9 +21,12 @@ const els = {
   chatForm: document.querySelector("#chatForm"),
   userInput: document.querySelector("#userInput"),
   sendBtn: document.querySelector("#sendBtn"),
+  attachImageBtn: document.querySelector("#attachImageBtn"),
   visionImageInput: document.querySelector("#visionImageInput"),
   visionPreview: document.querySelector("#visionPreview"),
-  clearVisionBtn: document.querySelector("#clearVisionBtn"),
+  modeChatBtn: document.querySelector("#modeChatBtn"),
+  modeImageBtn: document.querySelector("#modeImageBtn"),
+  composerImageActions: document.querySelector("#composerImageActions"),
   exportMdBtn: document.querySelector("#exportMdBtn"),
   exportJsonBtn: document.querySelector("#exportJsonBtn"),
   exportHtmlBtn: document.querySelector("#exportHtmlBtn"),
@@ -38,17 +41,16 @@ const els = {
   comfyStepsPath: document.querySelector("#comfyStepsPath"),
   comfyWidthPath: document.querySelector("#comfyWidthPath"),
   comfyHeightPath: document.querySelector("#comfyHeightPath"),
-  comfyPrompt: document.querySelector("#comfyPrompt"),
   comfyNegativePrompt: document.querySelector("#comfyNegativePrompt"),
   comfyWidth: document.querySelector("#comfyWidth"),
   comfyHeight: document.querySelector("#comfyHeight"),
   comfySteps: document.querySelector("#comfySteps"),
   comfySeed: document.querySelector("#comfySeed"),
   useLastAnswerAsPromptBtn: document.querySelector("#useLastAnswerAsPromptBtn"),
-  generateComfyBtn: document.querySelector("#generateComfyBtn"),
   comfyStatus: document.querySelector("#comfyStatus"),
-  comfyImages: document.querySelector("#comfyImages"),
 };
+
+const { t, displayChatTitle, isDefaultChatTitle, initUiPreferences, setLanguage, applyTheme } = window.UI_I18N;
 
 const STORAGE_KEYS = {
   baseUrl: "lm_base_url",
@@ -180,7 +182,53 @@ const state = {
   visionImageDataUrl: "",
   visionImageName: "",
   comfyUrl: localStorage.getItem(STORAGE_KEYS.comfyUrl) || "http://127.0.0.1:8188",
+  lastStatusType: "",
+  lastStatusText: "",
 };
+
+function defaultChatTitle() {
+  return t("newChat");
+}
+
+function isTypingContent(content) {
+  return content === t("typing") || content === t("generatingImage");
+}
+
+function roleLabel(role, message = null) {
+  if (role === "user") return t("roleUser");
+  if (role === "assistant" && message?.imageUrl) return t("roleGeneratedImage");
+  if (role === "assistant") return t("roleAssistant");
+  return t("roleSystem");
+}
+
+function getComposerMode(chat = getActiveChat()) {
+  return chat?.composerMode === "image" ? "image" : "chat";
+}
+
+function normalizeChat(chat) {
+  if (!chat.composerMode) chat.composerMode = "chat";
+  if (!Array.isArray(chat.messages)) chat.messages = [];
+  return chat;
+}
+
+function refreshUiLanguage() {
+  if (state.connected) {
+    const total = state.models.length;
+    const llms = getChatModels().length;
+    const unsupported = state.models.filter(isUnsupportedChatModel).length;
+    const loaded = state.models.filter(isLoaded).length;
+    setStatus("ok", t("connectedSummary", { total, llms, flux: unsupported, loaded }));
+    renderModelSelect();
+    renderModelInfo();
+  } else {
+    setStatus("", t("statusDisconnected"));
+  }
+
+  renderHistory();
+  renderHeader();
+  renderMessages();
+  updateComposerUi();
+}
 
 els.serverUrl.value = state.baseUrl;
 els.apiToken.value = state.token;
@@ -200,7 +248,7 @@ function createId() {
 function loadChats() {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.chats) || "[]");
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed.map(normalizeChat) : [];
   } catch {
     return [];
   }
@@ -217,12 +265,13 @@ function getActiveChat() {
   if (!chat) {
     chat = {
       id: createId(),
-      title: "Новый чат",
+      title: defaultChatTitle(),
       messages: [],
       previousResponseId: "",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       modelKey: "",
+      composerMode: "chat",
     };
 
     state.chats.unshift(chat);
@@ -236,12 +285,13 @@ function getActiveChat() {
 function newChat() {
   const chat = {
     id: createId(),
-    title: "Новый чат",
+    title: defaultChatTitle(),
     messages: [],
     previousResponseId: "",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     modelKey: state.selectedModelKey || "",
+    composerMode: "chat",
   };
 
   state.chats.unshift(chat);
@@ -250,22 +300,36 @@ function newChat() {
   renderHistory();
   renderMessages();
   renderHeader();
+  updateComposerUi();
 }
 
-function deleteActiveChat() {
-  if (!state.chats.length) return;
+function deleteChat(chatId) {
+  const chat = state.chats.find((item) => item.id === chatId);
+  if (!chat) return;
 
-  state.chats = state.chats.filter((chat) => chat.id !== state.activeChatId);
-  state.activeChatId = state.chats[0]?.id || "";
-  saveChats();
-
-  if (!state.activeChatId) {
-    getActiveChat();
+  if (chat.messages.length && !window.confirm(t("deleteChatConfirm"))) {
+    return;
   }
 
+  state.chats = state.chats.filter((item) => item.id !== chatId);
+
+  if (state.activeChatId === chatId) {
+    state.activeChatId = state.chats[0]?.id || "";
+    if (!state.activeChatId) {
+      getActiveChat();
+    }
+  }
+
+  saveChats();
   renderHistory();
   renderMessages();
   renderHeader();
+  updateComposerUi();
+}
+
+function deleteActiveChat() {
+  if (!state.activeChatId) return;
+  deleteChat(state.activeChatId);
 }
 
 function touchChat(chat) {
@@ -282,15 +346,16 @@ function touchChat(chat) {
 }
 
 function setChatTitleFromMessage(chat, text) {
-  if (chat.title && chat.title !== "Новый чат") return;
+  if (chat.title && !isDefaultChatTitle(chat.title)) return;
 
   const trimmed = String(text || "").trim().replace(/\s+/g, " ");
-  chat.title = trimmed.length > 42 ? `${trimmed.slice(0, 42)}...` : trimmed || "Новый чат";
+  chat.title = trimmed.length > 42 ? `${trimmed.slice(0, 42)}...` : trimmed || defaultChatTitle();
 }
 
 function formatDate(value) {
   try {
-    return new Intl.DateTimeFormat("ru", {
+    const locale = UI_I18N.getLang() === "en" ? "en" : "ru";
+    return new Intl.DateTimeFormat(locale, {
       day: "2-digit",
       month: "2-digit",
       hour: "2-digit",
@@ -303,24 +368,30 @@ function formatDate(value) {
 
 function renderHistory() {
   if (!state.chats.length) {
-    els.chatHistory.innerHTML = `<p class="muted">История пока пустая.</p>`;
+    els.chatHistory.innerHTML = `<p class="muted">${escapeHtml(t("historyEmpty"))}</p>`;
     return;
   }
 
   els.chatHistory.innerHTML = "";
 
   for (const chat of state.chats) {
+    const row = document.createElement("div");
+    row.className = `historyItemRow ${chat.id === state.activeChatId ? "active" : ""}`.trim();
+
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `historyItem ${chat.id === state.activeChatId ? "active" : ""}`.trim();
+    button.className = "historySelect";
 
     const title = document.createElement("div");
     title.className = "historyTitle";
-    title.textContent = chat.title || "Новый чат";
+    title.textContent = displayChatTitle(chat.title);
 
     const meta = document.createElement("div");
     meta.className = "historyMeta";
-    meta.textContent = `${chat.messages.length} сообщ. · ${formatDate(chat.updatedAt)}`;
+    meta.textContent = t("historyMeta", {
+      count: chat.messages.length,
+      date: formatDate(chat.updatedAt),
+    });
 
     button.appendChild(title);
     button.appendChild(meta);
@@ -331,14 +402,74 @@ function renderHistory() {
       renderHistory();
       renderMessages();
       renderHeader();
+      updateComposerUi();
     });
 
-    els.chatHistory.appendChild(button);
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "historyDelete";
+    deleteBtn.setAttribute("aria-label", t("deleteChatAria"));
+    deleteBtn.title = t("deleteChatAria");
+    deleteBtn.textContent = "×";
+    deleteBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteChat(chat.id);
+    });
+
+    row.appendChild(button);
+    row.appendChild(deleteBtn);
+    els.chatHistory.appendChild(row);
   }
 }
 
 function normalizeBaseUrl(url) {
   return String(url || "").trim().replace(/\/+$/, "");
+}
+
+function updateComposerUi() {
+  const chat = getActiveChat();
+  const mode = getComposerMode(chat);
+  const isChatMode = mode === "chat";
+
+  els.modeChatBtn.classList.toggle("active", isChatMode);
+  els.modeImageBtn.classList.toggle("active", !isChatMode);
+  els.modeChatBtn.setAttribute("aria-pressed", isChatMode ? "true" : "false");
+  els.modeImageBtn.setAttribute("aria-pressed", !isChatMode ? "true" : "false");
+
+  els.attachImageBtn.classList.toggle("hidden", !isChatMode);
+  els.composerImageActions.classList.toggle("hidden", isChatMode);
+
+  els.userInput.placeholder = isChatMode ? t("userInputPlaceholder") : t("imagePromptPlaceholder");
+
+  els.attachImageBtn.title = t("attachImage");
+  els.attachImageBtn.setAttribute("aria-label", t("attachImage"));
+
+  if (!isChatMode) {
+    clearVisionImage();
+  }
+
+  const canUseChat = state.connected && Boolean(state.selectedModelKey) && !state.busy && !state.comfyBusy;
+  const canGenerate = !state.busy && !state.comfyBusy;
+
+  els.userInput.disabled = isChatMode ? !canUseChat : !canGenerate;
+  els.sendBtn.disabled = isChatMode ? !canUseChat : !canGenerate;
+  els.attachImageBtn.disabled = !isChatMode || !canUseChat;
+}
+
+function setComposerMode(mode) {
+  const chat = getActiveChat();
+  const nextMode = mode === "image" ? "image" : "chat";
+  if (getComposerMode(chat) === nextMode) return;
+
+  chat.composerMode = nextMode;
+  saveChats();
+
+  const modeLabel = nextMode === "image" ? t("modeImage") : t("modeChat");
+  pushMessage("system", t("modeSwitchWarning", { mode: modeLabel }));
+  addMessageToDom(chat.messages[chat.messages.length - 1]);
+
+  updateComposerUi();
+  renderHeader();
 }
 
 function apiHeaders() {
@@ -359,6 +490,8 @@ function comfyEndpoint(path) {
 }
 
 function setStatus(type, text) {
+  state.lastStatusType = type || "";
+  state.lastStatusText = text || "";
   els.statusDot.className = `dot ${type || ""}`.trim();
   els.statusText.textContent = text;
 }
@@ -368,9 +501,8 @@ function setBusy(isBusy, text = "") {
   els.connectBtn.disabled = isBusy;
   els.refreshBtn.disabled = isBusy;
   els.loadBtn.disabled = isBusy || !state.connected || !state.selectedModelKey;
-  els.sendBtn.disabled = isBusy || !state.connected || !state.selectedModelKey;
-  els.userInput.disabled = isBusy || !state.connected || !state.selectedModelKey;
   els.forgetChatBtn.disabled = isBusy || !state.chats.length;
+  updateComposerUi();
   if (text) setStatus("warn", text);
 }
 
@@ -379,7 +511,7 @@ function setComfyBusy(isBusy, text = "") {
   els.testComfyBtn.disabled = isBusy;
   els.saveComfyWorkflowBtn.disabled = isBusy;
   els.useLastAnswerAsPromptBtn.disabled = isBusy;
-  els.generateComfyBtn.disabled = isBusy;
+  updateComposerUi();
   if (text) {
     els.comfyStatus.textContent = text;
     setStatus("warn", text);
@@ -387,7 +519,7 @@ function setComfyBusy(isBusy, text = "") {
 }
 
 function formatBytes(bytes) {
-  if (!Number.isFinite(Number(bytes))) return "—";
+  if (!Number.isFinite(Number(bytes))) return t("dash");
   const units = ["B", "KB", "MB", "GB", "TB"];
   let size = Number(bytes);
   let i = 0;
@@ -423,9 +555,9 @@ function downloadBlob(filename, content, mimeType) {
 }
 
 function yesNo(value) {
-  if (value === true) return "Да";
-  if (value === false) return "Нет";
-  return "—";
+  if (value === true) return t("yes");
+  if (value === false) return t("no");
+  return t("dash");
 }
 
 function getSelectedModel() {
@@ -434,6 +566,33 @@ function getSelectedModel() {
 
 function isLoaded(model) {
   return Array.isArray(model?.loaded_instances) && model.loaded_instances.length > 0;
+}
+
+function getLoadedInstanceIds(model) {
+  if (!Array.isArray(model?.loaded_instances)) return [];
+  return model.loaded_instances
+    .map((instance) => instance?.id || instance?.instance_id)
+    .filter(Boolean);
+}
+
+async function refreshModels() {
+  const data = await requestJson("/api/v1/models", { method: "GET" });
+  state.models = Array.isArray(data?.models) ? data.models : Array.isArray(data) ? data : [];
+  return state.models;
+}
+
+async function unloadModelInstances(model) {
+  const instanceIds = getLoadedInstanceIds(model);
+  if (!instanceIds.length) return 0;
+
+  for (const instanceId of instanceIds) {
+    await requestJson("/api/v1/models/unload", {
+      method: "POST",
+      body: JSON.stringify({ instance_id: instanceId }),
+    });
+  }
+
+  return instanceIds.length;
 }
 
 function modelHasVision(model) {
@@ -464,7 +623,7 @@ function renderModelSelect() {
 
   if (!llms.length) {
     const option = document.createElement("option");
-    option.textContent = unsupported.length ? "Чат-модели не найдены (FLUX скрыт)" : "LLM модели не найдены";
+    option.textContent = unsupported.length ? t("noChatModelsFlux") : t("noLlmModels");
     els.modelSelect.appendChild(option);
     els.modelSelect.disabled = true;
     state.selectedModelKey = "";
@@ -475,7 +634,7 @@ function renderModelSelect() {
   for (const model of llms) {
     const option = document.createElement("option");
     option.value = model.key;
-    option.textContent = `${model.display_name || model.key}${isLoaded(model) ? " — loaded" : ""}`;
+    option.textContent = `${model.display_name || model.key}${isLoaded(model) ? t("loadedSuffix") : ""}`;
     els.modelSelect.appendChild(option);
   }
 
@@ -499,9 +658,9 @@ function renderModelInfo() {
   if (!model) {
     const unsupported = state.models.filter(isUnsupportedChatModel);
     const note = unsupported.length
-      ? `<p class="hint">Скрыто image/diffusion моделей: ${unsupported.length}. FLUX запускается через ComfyUI, не через LM Studio Chat API.</p>`
+      ? `<p class="hint">${escapeHtml(t("hiddenImageModels", { count: unsupported.length }))}</p>`
       : "";
-    els.modelInfo.innerHTML = `<p class="muted">Модель не выбрана.</p>${note}`;
+    els.modelInfo.innerHTML = `<p class="muted">${escapeHtml(t("modelNotSelected"))}</p>${note}`;
     return;
   }
 
@@ -512,28 +671,28 @@ function renderModelInfo() {
   const config = firstInstance?.config || {};
 
   const rows = [
-    ["Статус", isLoaded(model) ? "Загружена" : "Не загружена"],
-    ["Название", model.display_name || "—"],
-    ["Ключ", model.key || "—"],
-    ["Publisher", model.publisher || "—"],
-    ["Тип", model.type || "—"],
-    ["Архитектура", model.architecture || "—"],
-    ["Параметры", model.params_string || "—"],
-    ["Квантизация", q.name ? `${q.name}${q.bits_per_weight ? ` / ${q.bits_per_weight} bit` : ""}` : "—"],
-    ["Размер", formatBytes(model.size_bytes)],
-    ["Формат", model.format || "—"],
-    ["Max context", model.max_context_length ? `${model.max_context_length} tokens` : "—"],
-    ["Loaded context", config.context_length ? `${config.context_length} tokens` : "—"],
-    ["Vision", yesNo(caps.vision)],
-    ["Tool use", yesNo(caps.trained_for_tool_use)],
-    ["Reasoning", reasoning.default || "—"],
+    [t("labelStatus"), isLoaded(model) ? t("statusLoaded") : t("statusNotLoaded")],
+    [t("labelName"), model.display_name || t("dash")],
+    [t("labelKey"), model.key || t("dash")],
+    [t("labelPublisher"), model.publisher || t("dash")],
+    [t("labelType"), model.type || t("dash")],
+    [t("labelArchitecture"), model.architecture || t("dash")],
+    [t("labelParams"), model.params_string || t("dash")],
+    [t("labelQuantization"), q.name ? `${q.name}${q.bits_per_weight ? ` / ${q.bits_per_weight} ${t("bit")}` : ""}` : t("dash")],
+    [t("labelSize"), formatBytes(model.size_bytes)],
+    [t("labelFormat"), model.format || t("dash")],
+    [t("labelMaxContext"), model.max_context_length ? `${model.max_context_length} ${t("tokens")}` : t("dash")],
+    [t("labelLoadedContext"), config.context_length ? `${config.context_length} ${t("tokens")}` : t("dash")],
+    [t("labelVision"), yesNo(caps.vision)],
+    [t("labelToolUse"), yesNo(caps.trained_for_tool_use)],
+    [t("labelReasoning"), reasoning.default || t("dash")],
   ];
 
   els.modelInfo.innerHTML = rows
     .map(([label, value]) => `<div class="infoRow"><span>${escapeHtml(label)}</span><span>${escapeHtml(value)}</span></div>`)
     .join("");
 
-  els.loadBtn.textContent = isLoaded(model) ? "Перезагрузить модель" : "Загрузить модель";
+  els.loadBtn.textContent = isLoaded(model) ? t("reloadModel") : t("loadModel");
   renderHeader();
 }
 
@@ -541,12 +700,12 @@ function renderHeader() {
   const chat = getActiveChat();
   const model = getSelectedModel();
 
-  els.chatTitle.textContent = chat.title || "Новый чат";
+  els.chatTitle.textContent = displayChatTitle(chat.title);
 
   if (model) {
-    els.chatSubtitle.textContent = `${model.display_name || model.key} · ${state.baseUrl} · ${isLoaded(model) ? "модель загружена" : "модель не загружена"}`;
+    els.chatSubtitle.textContent = `${model.display_name || model.key} · ${state.baseUrl} · ${isLoaded(model) ? t("modelLoaded") : t("modelNotLoadedShort")}`;
   } else {
-    els.chatSubtitle.textContent = "Подключите LM Studio сервер, затем выберите модель.";
+    els.chatSubtitle.textContent = t("connectThenSelect");
   }
 }
 
@@ -752,15 +911,15 @@ function renderMessages() {
   if (!chat.messages.length) {
     els.messages.innerHTML = `
       <div class="empty">
-        <h3>Новый чат</h3>
-        <p>Введите сообщение внизу. История будет сохранена в этом браузере.</p>
+        <h3>${escapeHtml(t("emptyChatTitle"))}</h3>
+        <p>${escapeHtml(t("emptyChatText"))}</p>
       </div>
     `;
     return;
   }
 
   for (const message of chat.messages) {
-    addMessageToDom(message.role, message.content, message.extraClass || "");
+    addMessageToDom(message);
   }
 
   els.messages.scrollTop = els.messages.scrollHeight;
@@ -771,24 +930,66 @@ function clearEmptyScreen() {
   if (empty) empty.remove();
 }
 
-function addMessageToDom(role, text, extraClass = "") {
+function addMessageToDom(message) {
   clearEmptyScreen();
+
+  const role = message.role;
+  const text = message.content || "";
+  const extraClass = message.extraClass || "";
 
   const wrap = document.createElement("div");
   wrap.className = `message ${role} ${extraClass}`.trim();
 
+  if (role === "system") {
+    const bubble = document.createElement("div");
+    bubble.className = "bubble systemBubble";
+    bubble.textContent = text;
+    wrap.appendChild(bubble);
+    els.messages.appendChild(wrap);
+    els.messages.scrollTop = els.messages.scrollHeight;
+    return wrap;
+  }
+
   const meta = document.createElement("div");
   meta.className = "meta";
-  meta.textContent = role === "user" ? "Вы" : role === "assistant" ? "Модель" : "Система";
+  meta.textContent = roleLabel(role, message);
 
   const bubble = document.createElement("div");
   bubble.className = "bubble";
+  if (message.imageUrl) bubble.classList.add("imageBubble");
 
-  if (role === "assistant") {
+  const displayText = role === "assistant" && isTypingContent(text)
+    ? (text === t("generatingImage") ? t("generatingImage") : t("typing"))
+    : text;
+
+  if (role === "assistant" && message.imageUrl) {
     bubble.classList.add("markdownBody");
-    bubble.innerHTML = markdownToHtml(text);
+    if (displayText) {
+      const caption = document.createElement("div");
+      caption.className = "imageCaption";
+      caption.innerHTML = markdownToHtml(displayText);
+      bubble.appendChild(caption);
+    }
+    const img = document.createElement("img");
+    img.src = message.imageUrl;
+    img.alt = message.imageFilename || t("comfyGeneratedAlt", { index: 1 });
+    bubble.appendChild(img);
+    if (message.imageUrl) {
+      const linkRow = document.createElement("div");
+      linkRow.className = "row imageActions";
+      const downloadLink = document.createElement("a");
+      downloadLink.className = "downloadLink";
+      downloadLink.href = message.imageUrl;
+      downloadLink.download = message.imageFilename || "generated-image.png";
+      downloadLink.textContent = t("download");
+      linkRow.appendChild(downloadLink);
+      bubble.appendChild(linkRow);
+    }
+  } else if (role === "assistant") {
+    bubble.classList.add("markdownBody");
+    bubble.innerHTML = markdownToHtml(displayText);
   } else {
-    bubble.textContent = text;
+    bubble.textContent = displayText;
   }
 
   wrap.appendChild(meta);
@@ -799,13 +1000,15 @@ function addMessageToDom(role, text, extraClass = "") {
   return bubble;
 }
 
-function pushMessage(role, content, extraClass = "") {
+function pushMessage(role, content, extra = {}) {
   const chat = getActiveChat();
   const message = {
     role,
     content,
-    extraClass,
+    extraClass: extra.extraClass || "",
     createdAt: new Date().toISOString(),
+    imageUrl: extra.imageUrl || "",
+    imageFilename: extra.imageFilename || "",
   };
 
   chat.messages.push(message);
@@ -814,8 +1017,9 @@ function pushMessage(role, content, extraClass = "") {
 }
 
 function addMessage(role, text, extraClass = "") {
-  pushMessage(role, text, extraClass);
-  return addMessageToDom(role, text, extraClass);
+  const message = pushMessage(role, text, { extraClass });
+  addMessageToDom(message);
+  return message;
 }
 
 function extractAssistantText(data) {
@@ -861,12 +1065,12 @@ async function requestJson(path, options = {}) {
 
 async function connect() {
   try {
-    setBusy(true, "Подключение через proxy...");
+    setBusy(true, t("connecting"));
 
     state.baseUrl = normalizeBaseUrl(els.serverUrl.value);
     state.token = els.apiToken.value.trim();
 
-    if (!state.baseUrl) throw new Error("Введите адрес LM Studio сервера.");
+    if (!state.baseUrl) throw new Error(t("enterLmStudioUrl"));
 
     localStorage.setItem(STORAGE_KEYS.baseUrl, state.baseUrl);
     localStorage.setItem(STORAGE_KEYS.token, state.token);
@@ -884,17 +1088,15 @@ async function connect() {
     const loaded = state.models.filter(isLoaded).length;
     const canChat = Boolean(state.selectedModelKey);
 
-    setStatus("ok", `Подключено · моделей: ${total}, чат: ${llms}, image/flux: ${unsupported}, загружено: ${loaded}`);
-    els.userInput.disabled = !canChat;
-    els.sendBtn.disabled = !canChat;
-    els.loadBtn.disabled = !canChat;
+    setStatus("ok", t("connectedSummary", { total, llms, flux: unsupported, loaded }));
     els.forgetChatBtn.disabled = false;
     renderHeader();
+    updateComposerUi();
   } catch (error) {
     state.connected = false;
-    setStatus("err", `Ошибка: ${error.message}`);
-    els.modelInfo.innerHTML = `<p class="muted">Не удалось подключиться. Проверьте адрес, сеть, Firewall и API token.</p>`;
-    addMessage("assistant", `Не удалось подключиться к LM Studio.\n\n${error.message}`, "error");
+    setStatus("err", `${t("errorPrefix")}: ${error.message}`);
+    els.modelInfo.innerHTML = `<p class="muted">${escapeHtml(t("connectFailedInfo"))}</p>`;
+    addMessage("assistant", t("connectFailedMessage", { message: error.message }), "error");
   } finally {
     setBusy(false);
   }
@@ -905,60 +1107,85 @@ async function loadSelectedModel() {
   if (!model) return;
 
   if (isUnsupportedChatModel(model)) {
-    addMessage("assistant", "Эта модель похожа на FLUX/image/diffusion модель. Её нельзя загрузить через LM Studio Chat API. Используйте блок ComfyUI / изображения.", "error");
+    addMessage("assistant", t("fluxModelError"), "error");
     return;
   }
 
   try {
-    setBusy(true, "Загрузка модели...");
+    setBusy(true, t("loadingModel"));
+
+    await refreshModels();
+    const freshModel = getSelectedModel();
+    if (!freshModel) throw new Error(t("modelNotSelected"));
+
+    if (isLoaded(freshModel)) {
+      setBusy(true, t("unloadingModel"));
+      await unloadModelInstances(freshModel);
+      await refreshModels();
+    }
+
+    setBusy(true, t("loadingModel"));
 
     const data = await requestJson("/api/v1/models/load", {
       method: "POST",
       body: JSON.stringify({
-        model: model.key,
+        model: freshModel.key,
         echo_load_config: true,
       }),
     });
 
-    addMessage("assistant", `Модель загружена: ${data.instance_id || model.key}\nСтатус: ${data.status || "loaded"}\nВремя загрузки: ${data.load_time_seconds ?? "—"}s`);
+    addMessage("assistant", t("modelLoadedMessage", {
+      id: data.instance_id || freshModel.key,
+      status: data.status || "loaded",
+      time: data.load_time_seconds ?? t("dash"),
+    }));
     await connect();
   } catch (error) {
-    setStatus("err", `Ошибка загрузки: ${error.message}`);
-    addMessage("assistant", `Не удалось загрузить модель.\n\n${error.message}`, "error");
+    setStatus("err", `${t("errorPrefix")}: ${error.message}`);
+    addMessage("assistant", t("modelLoadFailed", { message: error.message }), "error");
   } finally {
     setBusy(false);
   }
 }
 
-async function sendMessage(event) {
+async function handleChatFormSubmit(event) {
   event.preventDefault();
 
+  if (getComposerMode() === "image") {
+    await generateComfyImageFromComposer();
+    return;
+  }
+
+  await sendMessage();
+}
+
+async function sendMessage() {
   const text = els.userInput.value.trim();
   const model = getSelectedModel();
   const chat = getActiveChat();
 
-  if (!text || !model || state.busy) return;
+  if (!text || !model || state.busy || state.comfyBusy) return;
 
   els.userInput.value = "";
   setChatTitleFromMessage(chat, text);
   chat.modelKey = model.key;
-  addMessage("user", state.visionImageDataUrl ? `${text}\n\n[Изображение прикреплено: ${state.visionImageName || "image"}]` : text);
+  addMessage("user", state.visionImageDataUrl ? `${text}\n\n${t("imageAttached", { name: state.visionImageName || "image" })}` : text);
   renderHeader();
 
-  const assistantMessage = pushMessage("assistant", "Печатает...");
-  const assistantBubble = addMessageToDom("assistant", "Печатает...");
+  const assistantMessage = pushMessage("assistant", t("typing"));
+  const assistantBubble = addMessageToDom(assistantMessage);
   assistantBubble.parentElement.classList.add("loading");
 
   try {
-    setBusy(true, "Генерация ответа...");
+    setBusy(true, t("generating"));
 
     if (state.visionImageDataUrl && !modelHasVision(model)) {
-      throw new Error("К выбранной модели нельзя отправить изображение: Vision = Нет.");
+      throw new Error(t("visionNotSupported"));
     }
 
     const input = state.visionImageDataUrl
       ? [
-          { type: "message", content: text },
+          { type: "text", content: text },
           { type: "image", data_url: state.visionImageDataUrl },
         ]
       : text;
@@ -990,16 +1217,16 @@ async function sendMessage(event) {
     touchChat(chat);
     renderStats(data?.stats || null);
     clearVisionImage();
-    setStatus("ok", "Готово");
+    setStatus("ok", t("done"));
   } catch (error) {
-    const errorText = `Ошибка запроса.\n\n${error.message}`;
+    const errorText = t("requestError", { message: error.message });
     assistantMessage.content = errorText;
     assistantMessage.extraClass = "error";
     assistantBubble.innerHTML = markdownToHtml(errorText);
     assistantBubble.parentElement.classList.add("error");
 
     touchChat(chat);
-    setStatus("err", `Ошибка: ${error.message}`);
+    setStatus("err", `${t("errorPrefix")}: ${error.message}`);
   } finally {
     assistantBubble.parentElement.classList.remove("loading");
     setBusy(false);
@@ -1015,20 +1242,19 @@ function clearVisionImage() {
   els.visionImageInput.value = "";
   els.visionPreview.classList.add("hidden");
   els.visionPreview.innerHTML = "";
-  els.clearVisionBtn.disabled = true;
 }
 
 function setVisionImage(file) {
-  if (!file) return;
+  if (!file || getComposerMode() !== "chat") return;
 
   if (!file.type.startsWith("image/")) {
-    setStatus("err", "Выберите PNG/JPEG/WebP изображение.");
+    setStatus("err", t("pickImageType"));
     return;
   }
 
   const maxSize = 8 * 1024 * 1024;
   if (file.size > maxSize) {
-    setStatus("err", "Изображение слишком большое. Максимум 8 MB.");
+    setStatus("err", t("imageTooLarge"));
     return;
   }
 
@@ -1039,17 +1265,22 @@ function setVisionImage(file) {
     state.visionImageName = file.name;
 
     els.visionPreview.innerHTML = `
-      <img src="${state.visionImageDataUrl}" alt="Attached image preview">
-      <div class="fileMeta">${escapeHtml(file.name)} · ${formatBytes(file.size)}</div>
+      <div class="previewRow">
+        <img src="${state.visionImageDataUrl}" alt="${escapeHtml(t("imagePreviewAlt"))}">
+        <div class="previewMeta">
+          <div class="fileMeta">${escapeHtml(file.name)} · ${formatBytes(file.size)}</div>
+          <button type="button" class="btn small previewRemoveBtn">${escapeHtml(t("previewRemove"))}</button>
+        </div>
+      </div>
     `;
 
+    els.visionPreview.querySelector(".previewRemoveBtn")?.addEventListener("click", clearVisionImage);
     els.visionPreview.classList.remove("hidden");
-    els.clearVisionBtn.disabled = false;
-    setStatus("ok", "Изображение прикреплено к следующему сообщению.");
+    setStatus("ok", t("imageAttachedNext"));
   };
 
   reader.onerror = () => {
-    setStatus("err", "Не удалось прочитать изображение.");
+    setStatus("err", t("imageReadFailed"));
   };
 
   reader.readAsDataURL(file);
@@ -1058,7 +1289,7 @@ function setVisionImage(file) {
 function chatToMarkdown(chat) {
   const lines = [];
 
-  lines.push(`# ${chat.title || "Новый чат"}`);
+  lines.push(`# ${displayChatTitle(chat.title)}`);
   lines.push("");
   lines.push(`- Created: ${chat.createdAt || ""}`);
   lines.push(`- Updated: ${chat.updatedAt || ""}`);
@@ -1066,9 +1297,25 @@ function chatToMarkdown(chat) {
   lines.push("");
 
   for (const message of chat.messages) {
-    lines.push(`## ${message.role === "user" ? "User" : "Assistant"}`);
+    if (message.role === "system") {
+      lines.push(`> ${message.content || ""}`);
+      lines.push("");
+      continue;
+    }
+
+    const roleLabelText = message.role === "user"
+      ? t("exportUser")
+      : message.imageUrl
+        ? t("roleGeneratedImage")
+        : t("exportAssistant");
+
+    lines.push(`## ${roleLabelText}`);
     lines.push("");
     lines.push(message.content || "");
+    if (message.imageUrl) {
+      lines.push("");
+      lines.push(`${t("generatedImageNote")} ${message.imageUrl}`);
+    }
     lines.push("");
   }
 
@@ -1091,10 +1338,27 @@ function exportCurrentChat(format) {
 
   if (format === "html") {
     const messagesHtml = chat.messages.map((message) => {
-      const role = escapeHtml(message.role === "user" ? "User" : "Assistant");
-      const body = message.role === "assistant"
-        ? markdownToHtml(message.content || "")
-        : `<p>${escapeHtml(message.content || "").replace(/\n/g, "<br>")}</p>`;
+      if (message.role === "system") {
+        return `<section class="msg system"><p>${escapeHtml(message.content || "")}</p></section>`;
+      }
+
+      const role = escapeHtml(
+        message.role === "user"
+          ? t("exportUser")
+          : message.imageUrl
+            ? t("roleGeneratedImage")
+            : t("exportAssistant")
+      );
+
+      let body = "";
+      if (message.imageUrl) {
+        body += `<p><img src="${escapeHtml(message.imageUrl)}" alt="${escapeHtml(message.imageFilename || "generated")}" style="max-width:100%;border-radius:12px"></p>`;
+      }
+      if (message.role === "assistant") {
+        body += markdownToHtml(message.content || "");
+      } else {
+        body += `<p>${escapeHtml(message.content || "").replace(/\n/g, "<br>")}</p>`;
+      }
 
       return `<section class="msg"><h2>${role}</h2>${body}</section>`;
     }).join("\n");
@@ -1151,23 +1415,19 @@ function loadFluxKleinWorkflow() {
   els.comfyHeight.value = 512;
   els.comfySteps.value = 4;
 
-  if (!els.comfyPrompt.value.trim()) {
-    els.comfyPrompt.value = FLUX_KLEIN_WORKFLOW["4"].inputs.text;
-  }
-
   if (!els.comfyNegativePrompt.value.trim()) {
     els.comfyNegativePrompt.value = FLUX_KLEIN_WORKFLOW["5"].inputs.text;
   }
 
   saveComfySettings();
-  els.comfyStatus.textContent = "FLUX.2 Klein workflow загружен.";
-  setStatus("ok", "FLUX.2 Klein workflow загружен.");
+  els.comfyStatus.textContent = t("fluxWorkflowLoaded");
+  setStatus("ok", t("fluxWorkflowLoaded"));
 }
 
 function parseComfyWorkflow() {
   const text = els.comfyWorkflow.value.trim();
   if (!text) {
-    throw new Error("Вставьте workflow JSON, экспортированный из ComfyUI в API format.");
+    throw new Error(t("pasteWorkflowJson"));
   }
 
   const parsed = JSON.parse(text);
@@ -1180,20 +1440,20 @@ function setWorkflowPath(workflow, pathValue, value) {
 
   const parts = path.split(".").map((part) => part.trim()).filter(Boolean);
   if (parts.length < 2) {
-    throw new Error(`Неверный путь workflow: ${path}`);
+    throw new Error(t("invalidWorkflowPath", { path }));
   }
 
   let target = workflow;
   for (let i = 0; i < parts.length - 1; i++) {
     if (target == null || !(parts[i] in target)) {
-      throw new Error(`Путь не найден в workflow: ${path}`);
+      throw new Error(t("workflowPathNotFound", { path }));
     }
     target = target[parts[i]];
   }
 
   const key = parts[parts.length - 1];
   if (target == null || !(key in target)) {
-    throw new Error(`Поле не найдено в workflow: ${path}`);
+    throw new Error(t("workflowFieldNotFound", { path }));
   }
 
   target[key] = value;
@@ -1205,16 +1465,16 @@ function getComfySeed() {
   return Math.floor(Math.random() * 1000000000000000);
 }
 
-function buildComfyWorkflow() {
+function buildComfyWorkflow(promptText) {
   const workflow = parseComfyWorkflow();
-  const prompt = els.comfyPrompt.value.trim();
+  const prompt = String(promptText || "").trim();
 
   if (!prompt) {
-    throw new Error("Введите prompt для генерации изображения.");
+    throw new Error(t("enterImagePrompt"));
   }
 
   if (!els.comfyPromptPath.value.trim()) {
-    throw new Error("Укажите Prompt path, например 4.inputs.text.");
+    throw new Error(t("enterPromptPath"));
   }
 
   setWorkflowPath(workflow, els.comfyPromptPath.value, prompt);
@@ -1225,6 +1485,17 @@ function buildComfyWorkflow() {
   setWorkflowPath(workflow, els.comfyHeightPath.value, Number(els.comfyHeight.value || 1024));
 
   return workflow;
+}
+
+function comfyImageUrl(image) {
+  const params = new URLSearchParams({
+    filename: image.filename,
+    type: image.type || "output",
+  });
+
+  if (image.subfolder) params.set("subfolder", image.subfolder);
+
+  return comfyEndpoint(`/view?${params.toString()}`);
 }
 
 async function requestComfyJson(path, options = {}) {
@@ -1254,18 +1525,18 @@ async function requestComfyJson(path, options = {}) {
 
 async function testComfyConnection() {
   try {
-    setComfyBusy(true, "Проверка ComfyUI...");
+    setComfyBusy(true, t("checkingComfy"));
     saveComfySettings();
 
     const data = await requestComfyJson("/system_stats", { method: "GET" });
     const device = data?.devices?.[0];
     const deviceText = device?.name ? ` · ${device.name}` : "";
 
-    els.comfyStatus.textContent = `ComfyUI доступен${deviceText}`;
-    setStatus("ok", `ComfyUI доступен${deviceText}`);
+    els.comfyStatus.textContent = t("comfyAvailable", { device: deviceText });
+    setStatus("ok", t("comfyAvailable", { device: deviceText }));
   } catch (error) {
-    els.comfyStatus.textContent = `ComfyUI недоступен: ${error.message}`;
-    setStatus("err", `ComfyUI недоступен: ${error.message}`);
+    els.comfyStatus.textContent = t("comfyUnavailable", { message: error.message });
+    setStatus("err", t("comfyUnavailable", { message: error.message }));
   } finally {
     setComfyBusy(false);
   }
@@ -1301,67 +1572,58 @@ async function waitForComfyImages(promptId) {
     const statusText = String(status?.status_str || "").toLowerCase();
 
     if (statusText.includes("error")) {
-      throw new Error("ComfyUI завершил workflow с ошибкой. Проверьте workflow, node paths и консоль ComfyUI.");
+      throw new Error(t("comfyWorkflowError"));
     }
 
     if (status?.completed === true) {
-      throw new Error("ComfyUI завершил workflow, но не вернул изображения.");
+      throw new Error(t("comfyNoImages"));
     }
 
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
 
-  throw new Error("ComfyUI не вернул изображение за 180 секунд.");
-}
-
-function renderComfyImages(images) {
-  els.comfyImages.innerHTML = "";
-
-  images.forEach((image, index) => {
-    const params = new URLSearchParams({
-      filename: image.filename,
-      type: image.type || "output",
-    });
-
-    if (image.subfolder) params.set("subfolder", image.subfolder);
-
-    const src = comfyEndpoint(`/view?${params.toString()}`);
-    const filename = image.filename || `comfy-output-${index + 1}.png`;
-
-    const card = document.createElement("div");
-    card.className = "generatedImageCard";
-    card.innerHTML = `
-      <img src="${escapeHtml(src)}" alt="ComfyUI generated image ${index + 1}">
-      <div class="row">
-        <a class="downloadLink" href="${escapeHtml(src)}" download="${escapeHtml(filename)}">Скачать</a>
-      </div>
-    `;
-
-    els.comfyImages.appendChild(card);
-  });
+  throw new Error(t("comfyTimeout"));
 }
 
 function useLastAnswerAsComfyPrompt() {
   const chat = getActiveChat();
-  const lastAssistant = [...chat.messages].reverse().find((message) => message.role === "assistant" && !message.extraClass);
+  const lastAssistant = [...chat.messages].reverse().find((message) => (
+    message.role === "assistant"
+    && !message.extraClass
+    && !message.imageUrl
+    && !isTypingContent(message.content)
+  ));
 
   if (!lastAssistant?.content) {
-    els.comfyStatus.textContent = "В текущем чате нет ответа модели для prompt.";
-    setStatus("warn", "В текущем чате нет ответа модели для prompt.");
+    els.comfyStatus.textContent = t("noAssistantForPrompt");
+    setStatus("warn", t("noAssistantForPrompt"));
     return;
   }
 
-  els.comfyPrompt.value = lastAssistant.content.trim();
-  els.comfyStatus.textContent = "Последний ответ модели перенесён в ComfyUI prompt.";
-  setStatus("ok", "Последний ответ модели перенесён в ComfyUI prompt.");
+  els.userInput.value = lastAssistant.content.trim();
+  els.comfyStatus.textContent = t("lastAnswerToPrompt");
+  setStatus("ok", t("lastAnswerToPrompt"));
+  els.userInput.focus();
 }
 
-async function generateComfyImage() {
+async function generateComfyImageFromComposer() {
+  const prompt = els.userInput.value.trim();
+  if (!prompt || state.busy || state.comfyBusy) return;
+
+  const chat = getActiveChat();
+  els.userInput.value = "";
+  setChatTitleFromMessage(chat, prompt);
+  addMessage("user", prompt);
+  renderHeader();
+
+  const assistantMessage = pushMessage("assistant", t("generatingImage"));
+  renderMessages();
+
   try {
-    setComfyBusy(true, "Отправка workflow в ComfyUI...");
+    setComfyBusy(true, t("sendingWorkflow"));
     saveComfySettings();
 
-    const workflow = buildComfyWorkflow();
+    const workflow = buildComfyWorkflow(prompt);
     const clientId = createId();
     const data = await requestComfyJson("/prompt", {
       method: "POST",
@@ -1373,21 +1635,32 @@ async function generateComfyImage() {
 
     const promptId = data?.prompt_id;
     if (!promptId) {
-      throw new Error("ComfyUI не вернул prompt_id.");
+      throw new Error(t("comfyNoPromptId"));
     }
 
-    els.comfyStatus.textContent = `Генерация в очереди: ${promptId}`;
-    setStatus("warn", `Генерация в очереди: ${promptId}`);
+    els.comfyStatus.textContent = t("queuePrompt", { id: promptId });
+    setStatus("warn", t("queuePrompt", { id: promptId }));
     const images = await waitForComfyImages(promptId);
+    const image = images[0];
+    const filename = image.filename || "generated-image.png";
 
-    renderComfyImages(images);
-    els.comfyStatus.textContent = `Готово: ${images.length} изображ.`;
-    setStatus("ok", `Готово: ${images.length} изображ.`);
+    assistantMessage.content = "";
+    assistantMessage.imageUrl = comfyImageUrl(image);
+    assistantMessage.imageFilename = filename;
+    touchChat(chat);
+
+    els.comfyStatus.textContent = t("imagesReady", { count: images.length });
+    setStatus("ok", t("imagesReady", { count: images.length }));
   } catch (error) {
-    els.comfyStatus.textContent = `Ошибка ComfyUI: ${error.message}`;
-    setStatus("err", `Ошибка ComfyUI: ${error.message}`);
+    assistantMessage.content = t("comfyErrorPrefix", { message: error.message });
+    assistantMessage.extraClass = "error";
+    touchChat(chat);
+    els.comfyStatus.textContent = t("comfyErrorPrefix", { message: error.message });
+    setStatus("err", t("comfyErrorPrefix", { message: error.message }));
   } finally {
     setComfyBusy(false);
+    renderMessages();
+    els.userInput.focus();
   }
 }
 
@@ -1396,22 +1669,23 @@ els.refreshBtn.addEventListener("click", connect);
 els.loadBtn.addEventListener("click", loadSelectedModel);
 els.newChatBtn.addEventListener("click", newChat);
 els.forgetChatBtn.addEventListener("click", deleteActiveChat);
-els.chatForm.addEventListener("submit", sendMessage);
+els.chatForm.addEventListener("submit", handleChatFormSubmit);
 
+els.attachImageBtn.addEventListener("click", () => els.visionImageInput.click());
 els.visionImageInput.addEventListener("change", () => setVisionImage(els.visionImageInput.files?.[0]));
-els.clearVisionBtn.addEventListener("click", clearVisionImage);
+els.modeChatBtn.addEventListener("click", () => setComposerMode("chat"));
+els.modeImageBtn.addEventListener("click", () => setComposerMode("image"));
 els.exportMdBtn.addEventListener("click", () => exportCurrentChat("md"));
 els.exportJsonBtn.addEventListener("click", () => exportCurrentChat("json"));
 els.exportHtmlBtn.addEventListener("click", () => exportCurrentChat("html"));
 els.testComfyBtn.addEventListener("click", testComfyConnection);
 els.saveComfyWorkflowBtn.addEventListener("click", () => {
   saveComfySettings();
-  els.comfyStatus.textContent = "Настройки ComfyUI сохранены.";
-  setStatus("ok", "Настройки ComfyUI сохранены.");
+  els.comfyStatus.textContent = t("comfySettingsSaved");
+  setStatus("ok", t("comfySettingsSaved"));
 });
 els.loadFluxWorkflowBtn.addEventListener("click", loadFluxKleinWorkflow);
 els.useLastAnswerAsPromptBtn.addEventListener("click", useLastAnswerAsComfyPrompt);
-els.generateComfyBtn.addEventListener("click", generateComfyImage);
 
 els.modelSelect.addEventListener("change", () => {
   const chat = getActiveChat();
@@ -1433,8 +1707,23 @@ els.userInput.addEventListener("keydown", (event) => {
   }
 });
 
+initUiPreferences({ onLanguageChange: refreshUiLanguage });
+
+document.querySelectorAll("[data-lang-btn]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    setLanguage(btn.getAttribute("data-lang-btn"));
+  });
+});
+
+document.querySelectorAll("[data-theme-btn]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    applyTheme(btn.getAttribute("data-theme-btn"));
+  });
+});
+
 getActiveChat();
 renderHistory();
 renderMessages();
 renderHeader();
-setStatus("", "Не подключено");
+updateComposerUi();
+setStatus("", t("statusDisconnected"));

@@ -13,6 +13,7 @@ Pick the guide that matches what you need:
 | Install and run the app | [getting-started.md](./getting-started.md) |
 | Set URLs, ports, or env vars | [configuration.md](./configuration.md) |
 | Understand vision vs image generation | [images.md](./images.md) |
+| See what UI buttons actually do (Connect, Generate, …) | [lm-studio.md](./lm-studio.md#how-it-actually-works--ui-flow), [comfyui.md](./comfyui.md#how-it-actually-works) |
 | Use LM Studio chat, models, export | [lm-studio.md](./lm-studio.md) |
 | Set up ComfyUI / FLUX workflow | [comfyui.md](./comfyui.md) |
 | Integrate or debug HTTP/proxy | [api.md](./api.md) |

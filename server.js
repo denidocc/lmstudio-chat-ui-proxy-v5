@@ -170,6 +170,22 @@ const server = http.createServer((req, res) => {
   return serveStatic(req, res);
 });
 
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error("");
+    console.error(`Port ${PORT} is already in use.`);
+    console.error("Another LM Studio Chat UI instance (or another app) is already running on this port.");
+    console.error("");
+    console.error("Options:");
+    console.error("  1. Close the other terminal/window that runs this server");
+    console.error(`  2. Or start on another port: set PORT=8081 && node server.js`);
+    console.error("");
+    process.exit(1);
+  }
+
+  throw err;
+});
+
 server.listen(PORT, "0.0.0.0", () => {
   const lanUrls = getLanUrls(PORT);
 

@@ -53,8 +53,8 @@ Full docs live in [`docs/`](docs/README.md):
 | [Getting started](docs/getting-started.md) | First-time setup on Windows, macOS, Linux |
 | [Configuration](docs/configuration.md) | URLs, env vars, health check |
 | [Images & vision](docs/images.md) | Vision input vs image generation |
-| [LM Studio](docs/lm-studio.md) | Models, chat, history, export |
-| [ComfyUI / FLUX](docs/comfyui.md) | Workflow setup and parameter paths |
+| [LM Studio](docs/lm-studio.md) | Models, chat, history, export — includes **UI flow** (Connect, Load model, chat) |
+| [ComfyUI / FLUX](docs/comfyui.md) | Workflow setup, **built-in template**, what you must install manually |
 | [API reference](docs/api.md) | UI server, proxy, endpoints |
 | [Architecture](docs/architecture.md) | Project structure and components |
 | [Changelog v5](docs/changelog.md) | What changed in this version |
@@ -64,3 +64,11 @@ Full docs live in [`docs/`](docs/README.md):
 ## What's new in v5
 
 See [docs/changelog.md](docs/changelog.md) for the full list.
+
+---
+
+## License
+
+Copyright 2026 [denidocc](https://github.com/denidocc)
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full text.
