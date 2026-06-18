@@ -141,6 +141,29 @@
 
       <details class="panel collapsible">
         <summary>
+          <span data-i18n="panelSearx">SearXNG</span>
+          <small data-i18n="panelSearxHint">web search API</small>
+        </summary>
+
+        <div class="detailsBody">
+          <p class="hint" data-i18n="searxHint">Local meta-search for web research. Start with start-searxng.bat (Docker), then Test.</p>
+
+          <label class="field">
+            <span data-i18n="searxUrl">SearXNG URL</span>
+            <input id="searxUrl" type="url" placeholder="http://127.0.0.1:8888" />
+          </label>
+
+          <div class="row wrap">
+            <button id="testSearxBtn" class="btn" type="button" data-i18n="testSearx">Test SearXNG</button>
+            <button id="saveSearxBtn" class="btn" type="button" data-i18n="saveSearx">Save URL</button>
+          </div>
+
+          <div id="searxStatus" class="imageStatus muted"></div>
+        </div>
+      </details>
+
+      <details class="panel collapsible">
+        <summary>
           <span data-i18n="panelComfy">ComfyUI settings</span>
           <small data-i18n="panelComfyHint">FLUX / workflow API</small>
         </summary>

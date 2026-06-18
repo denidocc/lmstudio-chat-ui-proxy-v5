@@ -32,6 +32,10 @@ const els = {
   exportHtmlBtn: document.querySelector("#exportHtmlBtn"),
   comfyUrl: document.querySelector("#comfyUrl"),
   testComfyBtn: document.querySelector("#testComfyBtn"),
+  searxUrl: document.querySelector("#searxUrl"),
+  testSearxBtn: document.querySelector("#testSearxBtn"),
+  saveSearxBtn: document.querySelector("#saveSearxBtn"),
+  searxStatus: document.querySelector("#searxStatus"),
   saveComfyWorkflowBtn: document.querySelector("#saveComfyWorkflowBtn"),
   loadFluxWorkflowBtn: document.querySelector("#loadFluxWorkflowBtn"),
   comfyWorkflow: document.querySelector("#comfyWorkflow"),
@@ -59,6 +63,7 @@ const STORAGE_KEYS = {
   chats: "lm_chats_v5",
   activeChatId: "lm_active_chat_id_v5",
   comfyUrl: "lm_comfy_url",
+  searxUrl: "lm_searx_url",
   comfyWorkflow: "lm_comfy_workflow_api_json",
   comfyPromptPath: "lm_comfy_prompt_path",
   comfyNegativePath: "lm_comfy_negative_path",
@@ -179,9 +184,11 @@ const state = {
   connected: false,
   busy: false,
   comfyBusy: false,
+  searxBusy: false,
   visionImageDataUrl: "",
   visionImageName: "",
   comfyUrl: localStorage.getItem(STORAGE_KEYS.comfyUrl) || "http://127.0.0.1:8188",
+  searxUrl: localStorage.getItem(STORAGE_KEYS.searxUrl) || "http://127.0.0.1:8888",
   lastStatusType: "",
   lastStatusText: "",
 };
@@ -233,6 +240,7 @@ function refreshUiLanguage() {
 els.serverUrl.value = state.baseUrl;
 els.apiToken.value = state.token;
 els.comfyUrl.value = state.comfyUrl;
+els.searxUrl.value = state.searxUrl;
 els.comfyWorkflow.value = localStorage.getItem(STORAGE_KEYS.comfyWorkflow) || "";
 els.comfyPromptPath.value = localStorage.getItem(STORAGE_KEYS.comfyPromptPath) || "";
 els.comfyNegativePath.value = localStorage.getItem(STORAGE_KEYS.comfyNegativePath) || "";
@@ -472,6 +480,11 @@ function setComposerMode(mode) {
   renderHeader();
 }
 
+function searxEndpoint(path) {
+  const base = encodeURIComponent(state.searxUrl);
+  return `/searx-proxy${path}${path.includes("?") ? "&" : "?"}base=${base}`;
+}
+
 function apiHeaders() {
   const headers = { "Content-Type": "application/json" };
   const token = els.apiToken.value.trim();
@@ -504,6 +517,16 @@ function setBusy(isBusy, text = "") {
   els.forgetChatBtn.disabled = isBusy || !state.chats.length;
   updateComposerUi();
   if (text) setStatus("warn", text);
+}
+
+function setSearxBusy(isBusy, text = "") {
+  state.searxBusy = isBusy;
+  els.testSearxBtn.disabled = isBusy;
+  els.saveSearxBtn.disabled = isBusy;
+  if (text) {
+    els.searxStatus.textContent = text;
+    setStatus("warn", text);
+  }
 }
 
 function setComfyBusy(isBusy, text = "") {
@@ -1412,6 +1435,12 @@ function saveComfySettings() {
   localStorage.setItem(STORAGE_KEYS.comfyHeightPath, els.comfyHeightPath.value.trim());
 }
 
+function saveSearxSettings() {
+  state.searxUrl = normalizeBaseUrl(els.searxUrl.value || "http://127.0.0.1:8888");
+  els.searxUrl.value = state.searxUrl;
+  localStorage.setItem(STORAGE_KEYS.searxUrl, state.searxUrl);
+}
+
 function loadFluxKleinWorkflow() {
   els.comfyWorkflow.value = JSON.stringify(FLUX_KLEIN_WORKFLOW, null, 2);
   els.comfyPromptPath.value = "4.inputs.text";
@@ -1530,6 +1559,61 @@ async function requestComfyJson(path, options = {}) {
   }
 
   return data;
+}
+
+async function requestSearxJson(path, options = {}) {
+  const response = await fetch(searxEndpoint(path), {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+    },
+  });
+
+  const text = await response.text();
+  let data = null;
+
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { raw: text };
+  }
+
+  if (!response.ok) {
+    const message = data?.error?.message
+      || data?.error
+      || (response.status === 403 ? t("searxJsonForbidden") : "")
+      || data?.raw
+      || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data;
+}
+
+async function testSearxConnection() {
+  try {
+    setSearxBusy(true, t("checkingSearx"));
+    saveSearxSettings();
+
+    const params = new URLSearchParams({
+      q: "test",
+      format: "json",
+    });
+    const data = await requestSearxJson(`/search?${params.toString()}`, { method: "GET" });
+    const count = Array.isArray(data?.results) ? data.results.length : 0;
+
+    if (!count) {
+      throw new Error(t("searxNoResults"));
+    }
+
+    els.searxStatus.textContent = t("searxAvailable", { count });
+    setStatus("ok", t("searxAvailable", { count }));
+  } catch (error) {
+    els.searxStatus.textContent = t("searxUnavailable", { message: error.message });
+    setStatus("err", t("searxUnavailable", { message: error.message }));
+  } finally {
+    setSearxBusy(false);
+  }
 }
 
 async function testComfyConnection() {
@@ -1688,6 +1772,12 @@ els.exportMdBtn.addEventListener("click", () => exportCurrentChat("md"));
 els.exportJsonBtn.addEventListener("click", () => exportCurrentChat("json"));
 els.exportHtmlBtn.addEventListener("click", () => exportCurrentChat("html"));
 els.testComfyBtn.addEventListener("click", testComfyConnection);
+els.testSearxBtn.addEventListener("click", testSearxConnection);
+els.saveSearxBtn.addEventListener("click", () => {
+  saveSearxSettings();
+  els.searxStatus.textContent = t("searxSettingsSaved");
+  setStatus("ok", t("searxSettingsSaved"));
+});
 els.saveComfyWorkflowBtn.addEventListener("click", () => {
   saveComfySettings();
   els.comfyStatus.textContent = t("comfySettingsSaved");

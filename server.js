@@ -9,6 +9,7 @@ const PORT = Number(process.env.PORT || 8080);
 const PUBLIC_DIR = path.join(__dirname, "public");
 const DEFAULT_LMSTUDIO_URL = process.env.LMSTUDIO_URL || "http://192.168.10.175:1234";
 const DEFAULT_COMFY_URL = process.env.COMFY_URL || "http://127.0.0.1:8188";
+const DEFAULT_SEARX_URL = process.env.SEARXNG_URL || "http://127.0.0.1:8888";
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -156,6 +157,7 @@ const server = http.createServer((req, res) => {
       port: PORT,
       defaultLmStudioUrl: DEFAULT_LMSTUDIO_URL,
       defaultComfyUrl: DEFAULT_COMFY_URL,
+      defaultSearxUrl: DEFAULT_SEARX_URL,
     });
   }
 
@@ -165,6 +167,10 @@ const server = http.createServer((req, res) => {
 
   if (req.url.startsWith("/comfy-proxy/")) {
     return proxyRequest(req, res, "/comfy-proxy", DEFAULT_COMFY_URL);
+  }
+
+  if (req.url.startsWith("/searx-proxy/")) {
+    return proxyRequest(req, res, "/searx-proxy", DEFAULT_SEARX_URL);
   }
 
   return serveStatic(req, res);
@@ -203,5 +209,6 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`Health check: http://localhost:${PORT}/health`);
   console.log(`Default LM Studio URL: ${DEFAULT_LMSTUDIO_URL}`);
   console.log(`Default ComfyUI URL: ${DEFAULT_COMFY_URL}`);
+  console.log(`Default SearXNG URL: ${DEFAULT_SEARX_URL}`);
   console.log("");
 });
