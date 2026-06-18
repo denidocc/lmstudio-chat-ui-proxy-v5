@@ -36,6 +36,11 @@ const els = {
   testSearxBtn: document.querySelector("#testSearxBtn"),
   saveSearxBtn: document.querySelector("#saveSearxBtn"),
   searxStatus: document.querySelector("#searxStatus"),
+  firecrawlUrl: document.querySelector("#firecrawlUrl"),
+  firecrawlTestUrl: document.querySelector("#firecrawlTestUrl"),
+  testFirecrawlBtn: document.querySelector("#testFirecrawlBtn"),
+  saveFirecrawlBtn: document.querySelector("#saveFirecrawlBtn"),
+  firecrawlStatus: document.querySelector("#firecrawlStatus"),
   saveComfyWorkflowBtn: document.querySelector("#saveComfyWorkflowBtn"),
   loadFluxWorkflowBtn: document.querySelector("#loadFluxWorkflowBtn"),
   comfyWorkflow: document.querySelector("#comfyWorkflow"),
@@ -64,6 +69,8 @@ const STORAGE_KEYS = {
   activeChatId: "lm_active_chat_id_v5",
   comfyUrl: "lm_comfy_url",
   searxUrl: "lm_searx_url",
+  firecrawlUrl: "lm_firecrawl_url",
+  firecrawlTestUrl: "lm_firecrawl_test_url",
   comfyWorkflow: "lm_comfy_workflow_api_json",
   comfyPromptPath: "lm_comfy_prompt_path",
   comfyNegativePath: "lm_comfy_negative_path",
@@ -185,10 +192,12 @@ const state = {
   busy: false,
   comfyBusy: false,
   searxBusy: false,
+  firecrawlBusy: false,
   visionImageDataUrl: "",
   visionImageName: "",
   comfyUrl: localStorage.getItem(STORAGE_KEYS.comfyUrl) || "http://127.0.0.1:8188",
   searxUrl: localStorage.getItem(STORAGE_KEYS.searxUrl) || "http://127.0.0.1:8888",
+  firecrawlUrl: localStorage.getItem(STORAGE_KEYS.firecrawlUrl) || "http://127.0.0.1:3002",
   lastStatusType: "",
   lastStatusText: "",
 };
@@ -241,6 +250,8 @@ els.serverUrl.value = state.baseUrl;
 els.apiToken.value = state.token;
 els.comfyUrl.value = state.comfyUrl;
 els.searxUrl.value = state.searxUrl;
+els.firecrawlUrl.value = state.firecrawlUrl;
+els.firecrawlTestUrl.value = localStorage.getItem(STORAGE_KEYS.firecrawlTestUrl) || "https://example.com";
 els.comfyWorkflow.value = localStorage.getItem(STORAGE_KEYS.comfyWorkflow) || "";
 els.comfyPromptPath.value = localStorage.getItem(STORAGE_KEYS.comfyPromptPath) || "";
 els.comfyNegativePath.value = localStorage.getItem(STORAGE_KEYS.comfyNegativePath) || "";
@@ -485,6 +496,11 @@ function searxEndpoint(path) {
   return `/searx-proxy${path}${path.includes("?") ? "&" : "?"}base=${base}`;
 }
 
+function firecrawlEndpoint(path) {
+  const base = encodeURIComponent(state.firecrawlUrl);
+  return `/firecrawl-proxy${path}${path.includes("?") ? "&" : "?"}base=${base}`;
+}
+
 function apiHeaders() {
   const headers = { "Content-Type": "application/json" };
   const token = els.apiToken.value.trim();
@@ -517,6 +533,16 @@ function setBusy(isBusy, text = "") {
   els.forgetChatBtn.disabled = isBusy || !state.chats.length;
   updateComposerUi();
   if (text) setStatus("warn", text);
+}
+
+function setFirecrawlBusy(isBusy, text = "") {
+  state.firecrawlBusy = isBusy;
+  els.testFirecrawlBtn.disabled = isBusy;
+  els.saveFirecrawlBtn.disabled = isBusy;
+  if (text) {
+    els.firecrawlStatus.textContent = text;
+    setStatus("warn", text);
+  }
 }
 
 function setSearxBusy(isBusy, text = "") {
@@ -1441,6 +1467,13 @@ function saveSearxSettings() {
   localStorage.setItem(STORAGE_KEYS.searxUrl, state.searxUrl);
 }
 
+function saveFirecrawlSettings() {
+  state.firecrawlUrl = normalizeBaseUrl(els.firecrawlUrl.value || "http://127.0.0.1:3002");
+  els.firecrawlUrl.value = state.firecrawlUrl;
+  localStorage.setItem(STORAGE_KEYS.firecrawlUrl, state.firecrawlUrl);
+  localStorage.setItem(STORAGE_KEYS.firecrawlTestUrl, els.firecrawlTestUrl.value.trim() || "https://example.com");
+}
+
 function loadFluxKleinWorkflow() {
   els.comfyWorkflow.value = JSON.stringify(FLUX_KLEIN_WORKFLOW, null, 2);
   els.comfyPromptPath.value = "4.inputs.text";
@@ -1616,6 +1649,62 @@ async function testSearxConnection() {
   }
 }
 
+async function requestFirecrawlJson(path, options = {}) {
+  const response = await fetch(firecrawlEndpoint(path), {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+
+  const text = await response.text();
+  let data = null;
+
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { raw: text };
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.error || data?.message || data?.raw || `HTTP ${response.status}`);
+  }
+
+  return data;
+}
+
+async function testFirecrawlConnection() {
+  try {
+    setFirecrawlBusy(true, t("checkingFirecrawl"));
+    saveFirecrawlSettings();
+
+    const scrapeUrl = els.firecrawlTestUrl.value.trim() || "https://example.com";
+    const data = await requestFirecrawlJson("/v2/scrape", {
+      method: "POST",
+      body: JSON.stringify({
+        url: scrapeUrl,
+        formats: ["markdown"],
+      }),
+    });
+
+    const markdown = data?.data?.markdown || data?.markdown || "";
+    const length = String(markdown).trim().length;
+
+    if (!length) {
+      throw new Error(t("firecrawlNoMarkdown"));
+    }
+
+    els.firecrawlStatus.textContent = t("firecrawlAvailable", { length, url: scrapeUrl });
+    setStatus("ok", t("firecrawlAvailable", { length, url: scrapeUrl }));
+  } catch (error) {
+    els.firecrawlStatus.textContent = t("firecrawlUnavailable", { message: error.message });
+    setStatus("err", t("firecrawlUnavailable", { message: error.message }));
+  } finally {
+    setFirecrawlBusy(false);
+  }
+}
+
 async function testComfyConnection() {
   try {
     setComfyBusy(true, t("checkingComfy"));
@@ -1777,6 +1866,12 @@ els.saveSearxBtn.addEventListener("click", () => {
   saveSearxSettings();
   els.searxStatus.textContent = t("searxSettingsSaved");
   setStatus("ok", t("searxSettingsSaved"));
+});
+els.testFirecrawlBtn.addEventListener("click", testFirecrawlConnection);
+els.saveFirecrawlBtn.addEventListener("click", () => {
+  saveFirecrawlSettings();
+  els.firecrawlStatus.textContent = t("firecrawlSettingsSaved");
+  setStatus("ok", t("firecrawlSettingsSaved"));
 });
 els.saveComfyWorkflowBtn.addEventListener("click", () => {
   saveComfySettings();

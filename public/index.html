@@ -164,6 +164,34 @@
 
       <details class="panel collapsible">
         <summary>
+          <span data-i18n="panelFirecrawl">Firecrawl</span>
+          <small data-i18n="panelFirecrawlHint">scrape URL to markdown</small>
+        </summary>
+
+        <div class="detailsBody">
+          <p class="hint" data-i18n="firecrawlHint">Scrape a page to markdown. Start with start-firecrawl.bat (Docker), then Test.</p>
+
+          <label class="field">
+            <span data-i18n="firecrawlUrl">Firecrawl URL</span>
+            <input id="firecrawlUrl" type="url" placeholder="http://127.0.0.1:3002" />
+          </label>
+
+          <label class="field">
+            <span data-i18n="firecrawlTestUrl">Test scrape URL</span>
+            <input id="firecrawlTestUrl" type="url" placeholder="https://example.com" />
+          </label>
+
+          <div class="row wrap">
+            <button id="testFirecrawlBtn" class="btn" type="button" data-i18n="testFirecrawl">Test Firecrawl</button>
+            <button id="saveFirecrawlBtn" class="btn" type="button" data-i18n="saveFirecrawl">Save URL</button>
+          </div>
+
+          <div id="firecrawlStatus" class="imageStatus muted"></div>
+        </div>
+      </details>
+
+      <details class="panel collapsible">
+        <summary>
           <span data-i18n="panelComfy">ComfyUI settings</span>
           <small data-i18n="panelComfyHint">FLUX / workflow API</small>
         </summary>

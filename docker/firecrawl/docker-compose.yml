@@ -1,0 +1,50 @@
+name: lmstudio-firecrawl
+
+services:
+  redis:
+    image: redis:alpine
+    networks: [backend]
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  playwright-service:
+    image: ghcr.io/firecrawl/playwright-service:latest
+    environment:
+      PORT: 3000
+    networks: [backend]
+
+  api:
+    image: ghcr.io/firecrawl/firecrawl:latest
+    ports:
+      - "3002:3002"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3002
+      ENV: local
+      USE_DB_AUTHENTICATION: "false"
+      REDIS_URL: redis://redis:6379
+      REDIS_RATE_LIMIT_URL: redis://redis:6379
+      PLAYWRIGHT_MICROSERVICE_URL: http://playwright-service:3000/scrape
+      NUQ_RABBITMQ_URL: amqp://rabbitmq:5672
+      SEARXNG_ENDPOINT: ${SEARXNG_ENDPOINT:-http://host.docker.internal:8888}
+      LOGGING_LEVEL: INFO
+    depends_on:
+      redis:
+        condition: service_started
+      playwright-service:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    networks: [backend]
+
+networks:
+  backend:
+    driver: bridge

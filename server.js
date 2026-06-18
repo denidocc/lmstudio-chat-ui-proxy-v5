@@ -10,6 +10,7 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const DEFAULT_LMSTUDIO_URL = process.env.LMSTUDIO_URL || "http://192.168.10.175:1234";
 const DEFAULT_COMFY_URL = process.env.COMFY_URL || "http://127.0.0.1:8188";
 const DEFAULT_SEARX_URL = process.env.SEARXNG_URL || "http://127.0.0.1:8888";
+const DEFAULT_FIRECRAWL_URL = process.env.FIRECRAWL_URL || "http://127.0.0.1:3002";
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -158,6 +159,7 @@ const server = http.createServer((req, res) => {
       defaultLmStudioUrl: DEFAULT_LMSTUDIO_URL,
       defaultComfyUrl: DEFAULT_COMFY_URL,
       defaultSearxUrl: DEFAULT_SEARX_URL,
+      defaultFirecrawlUrl: DEFAULT_FIRECRAWL_URL,
     });
   }
 
@@ -171,6 +173,10 @@ const server = http.createServer((req, res) => {
 
   if (req.url.startsWith("/searx-proxy/")) {
     return proxyRequest(req, res, "/searx-proxy", DEFAULT_SEARX_URL);
+  }
+
+  if (req.url.startsWith("/firecrawl-proxy/")) {
+    return proxyRequest(req, res, "/firecrawl-proxy", DEFAULT_FIRECRAWL_URL);
   }
 
   return serveStatic(req, res);
@@ -210,5 +216,6 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`Default LM Studio URL: ${DEFAULT_LMSTUDIO_URL}`);
   console.log(`Default ComfyUI URL: ${DEFAULT_COMFY_URL}`);
   console.log(`Default SearXNG URL: ${DEFAULT_SEARX_URL}`);
+  console.log(`Default Firecrawl URL: ${DEFAULT_FIRECRAWL_URL}`);
   console.log("");
 });
